@@ -7,7 +7,7 @@ on:
       - released
 
 env:
-  GODOT_VERSION: 4.4.1
+  GODOT_VERSION: 4.7.2
   EXPORT_NAME: candy-ci
 
 jobs:

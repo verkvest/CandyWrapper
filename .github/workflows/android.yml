@@ -1,0 +1,209 @@
+# Release Android App Bundle and APK (targetSdk 36).
+# Signs with the upload keystore when the secrets are present.
+# Otherwise builds a debug-signed APK (and AAB) so the artifact is still installable.
+name: android
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+env:
+  GODOT_VERSION: "4.7.2"
+  APP_VERSION: "0.1.0"
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK 36
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-36" "platform-tools"
+          BT=$(sdkmanager --list 2>/dev/null | awk '/build-tools;36\./{print $1}' | sort -V | tail -1)
+          if [ -n "$BT" ]; then
+            sdkmanager --install "$BT"
+          else
+            sdkmanager --install "build-tools;35.0.0"
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: export-tools
+          key: godot-${{ env.GODOT_VERSION }}-linux-templates-v1
+
+      - name: Download Godot
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p export-tools && cd export-tools
+          curl -fsSL -o editor.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q editor.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          chmod +x godot
+          mkdir -p "editor_data/export_templates"
+          unzip -q templates.tpz
+          mv templates "editor_data/export_templates/${GODOT_VERSION}.stable"
+          rm -f editor.zip templates.tpz
+          touch ._sc_
+
+      - name: Install Android build template
+        run: |
+          set -euo pipefail
+          TPL="export-tools/editor_data/export_templates/${GODOT_VERSION}.stable"
+          ls "$TPL" | head
+          SRC=$(find "$TPL" -name 'android_source.zip' | head -1)
+          [ -n "$SRC" ]
+          rm -rf android/build
+          mkdir -p android/build
+          unzip -q "$SRC" -d android/build
+          if [ ! -f android/build/build.gradle ] && [ ! -f android/build/config.gradle ]; then
+            inner=$(find android/build -mindepth 2 -name build.gradle | head -1)
+            [ -n "$inner" ]
+            parent=$(dirname "$inner")
+            shopt -s dotglob
+            mv "$parent"/* android/build/ || true
+          fi
+          find android/build -maxdepth 2 -type f | head -40
+
+      - name: Keystore
+        id: keys
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_B64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ]; then
+            echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "Using the release keystore."
+          else
+            echo "::notice::ANDROID_KEYSTORE_* secrets are not all set. Building a debug-signed APK and AAB."
+            keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            echo "mode=debug" >> "$GITHUB_OUTPUT"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          fi
+
+      - name: Point Godot at the Android SDK
+        run: |
+          set -euo pipefail
+          python3 tools/write_godot_android_settings.py
+
+      - name: Stamp version code
+        run: |
+          set -euo pipefail
+          perl -i -pe 's/^version\/code=.*/version\/code=${{ github.run_number }}/' export_presets.cfg
+          perl -i -pe 's/^version\/name=.*/version\/name="${{ env.APP_VERSION }}"/' export_presets.cfg
+
+      - name: Export APK and AAB
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
+        run: |
+          set -euo pipefail
+          mkdir -p build/android
+          MODE="${{ steps.keys.outputs.mode }}"
+          FLAG="--export-release"
+          if [ "$MODE" = "debug" ]; then
+            FLAG="--export-debug"
+          fi
+          cd export-tools
+          ./godot --headless --path .. $FLAG "Android" "../build/android/Liltkin.apk"
+          ./godot --headless --path .. $FLAG "Android AAB" "../build/android/Liltkin.aab"
+          cd ..
+          ls -lh build/android
+          echo "---- config.gradle ----"
+          find android/build -name config.gradle -print -exec cat {} \;
+          if ! grep -R "targetSdk" android/build --include='config.gradle' | grep -q 36; then
+            echo "::error::Gradle config does not set targetSdk 36"
+            exit 1
+          fi
+
+      - name: Check APK targetSdk
+        if: success()
+        run: |
+          set -euo pipefail
+          BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$BT/aapt" dump badging build/android/Liltkin.apk | tee "$RUNNER_TEMP/badging.txt" | head -20
+          grep -q "targetSdkVersion:'36'" "$RUNNER_TEMP/badging.txt"
+          grep -q "package: name='es.verkvest.liltkin'" "$RUNNER_TEMP/badging.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: liltkin-android
+          path: build/android/*
+          if-no-files-found: error
+
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot editor
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: export-tools/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-editor-v1
+
+      - name: Download Godot editor
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p export-tools
+          curl -fsSL -o /tmp/editor.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/editor.zip -d export-tools
+          mv "export-tools/Godot_v${GODOT_VERSION}-stable_linux.x86_64" export-tools/godot
+          chmod +x export-tools/godot
+
+      - name: Phone-viewport screenshots
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglu1-mesa
+          mkdir -p artifacts/screenshots
+          export LIBGL_ALWAYS_SOFTWARE=1
+          xvfb-run -s "-screen 0 1080x1920x24" \
+            ./export-tools/godot --path . --display-driver x11 --audio-driver Dummy \
+            --rendering-method gl_compatibility --resolution 1080x1920 \
+            -- --screenshot "$GITHUB_WORKSPACE/artifacts/screenshots"
+          ls -lh artifacts/screenshots
+          test -s artifacts/screenshots/menu.png
+          test -s artifacts/screenshots/gameplay.png
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phone-screenshots
+          path: artifacts/screenshots/*.png
+          if-no-files-found: error

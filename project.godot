@@ -10,19 +10,22 @@ config_version=5
 
 [application]
 
-config/name="Candy Wrapper"
-config/description="by Harmony Honey"
-run/main_scene="uid://c0r7ub5njku02"
-config/features=PackedStringArray("4.4")
-config/icon="res://media/image/picon.svg"
+config/name="Liltkin"
+config/description="Looping arcade platformer. Mobile port of the MIT game by Harmony Honey Monroe."
+config/version="0.1.0"
+run/main_scene="res://src/mobile/shell.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://branding/icon.png"
+boot_splash/bg_color=Color(1, 0.984314, 0.8, 1)
+boot_splash/show_image=true
 
 [display]
 
-window/size/viewport_width=144
-window/size/viewport_height=144
-window/size/window_width_override=576
-window/size/window_height_override=576
-window/stretch/mode="canvas_items"
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/stretch/mode="disabled"
+window/handheld/orientation=5
+window/size/resizable=true
 
 [importer_defaults]
 
@@ -110,11 +113,11 @@ ui_fullscreen={
 
 [rendering]
 
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
 textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(1, 0.984314, 0.8, 1)
 environment/defaults/default_environment="res://default_env.tres"
-quality/driver/driver_name="GLES2"
-quality/2d/use_pixel_snap=true
-vram_compression/import_etc=true
-quality/dynamic_fonts/use_oversampling=false
+2d/snap/snap_2d_transforms_to_pixel=true
+2d/snap/snap_2d_vertices_to_pixel=true

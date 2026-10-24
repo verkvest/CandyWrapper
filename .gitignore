@@ -6,3 +6,8 @@
 # Flatpak build
 .flatpak-builder/
 repo/
+
+# Local/CI build output
+build/
+artifacts/
+android/
