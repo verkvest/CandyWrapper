@@ -84,6 +84,11 @@ jobs:
             shopt -s dotglob
             mv "$parent"/* android/build/ || true
           fi
+          # Godot 4.7 joins this directory with "build", and refuses to export
+          # unless android/.build_version matches the editor (4.7.2.stable).
+          printf '%s.stable\n' "$GODOT_VERSION" > android/.build_version
+          printf '\n' > android/build/.gdignore
+          test -f android/build/build.gradle
           find android/build -maxdepth 2 -type f | head -40
 
       - name: Keystore

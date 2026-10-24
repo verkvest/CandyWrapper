@@ -118,8 +118,9 @@ jobs:
           [ -n "$PROJ" ]
           echo "project $PROJ"
           xcodebuild -list -project "$PROJ"
-          SCHEME=$(xcodebuild -list -project "$PROJ" | awk '/Schemes:/{f=1;next} f && NF{print; exit}')
-          echo "scheme $SCHEME"
+          SCHEME=$(xcodebuild -list -project "$PROJ" | awk '/Schemes:/{f=1;next} f && $1{print $1; exit}')
+          echo "scheme [$SCHEME]"
+          [ -n "$SCHEME" ]
           xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Liltkin.xcarchive" \
