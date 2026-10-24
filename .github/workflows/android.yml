@@ -139,10 +139,10 @@ jobs:
           if [ "$MODE" = "debug" ]; then
             FLAG="--export-debug"
           fi
-          cd export-tools
-          ./godot --headless --path .. $FLAG "Android" "../build/android/Liltkin.apk"
-          ./godot --headless --path .. $FLAG "Android AAB" "../build/android/Liltkin.aab"
-          cd ..
+          # Paths are relative to the project. ._sc_ next to the binary
+          # keeps this editor self-contained.
+          ./export-tools/godot --headless --path "$GITHUB_WORKSPACE" $FLAG "Android" "$GITHUB_WORKSPACE/build/android/Liltkin.apk"
+          ./export-tools/godot --headless --path "$GITHUB_WORKSPACE" $FLAG "Android AAB" "$GITHUB_WORKSPACE/build/android/Liltkin.aab"
           ls -lh build/android
           echo "---- config.gradle ----"
           find android/build -name config.gradle -print -exec cat {} \;
