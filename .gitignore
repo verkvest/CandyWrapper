@@ -6,3 +6,9 @@
 # Flatpak build
 .flatpak-builder/
 repo/
+
+# Local/CI build output. /android/ is the Godot Gradle template
+# unpacked in CI; branding/android holds the launcher icons.
+build/
+artifacts/
+/android/
