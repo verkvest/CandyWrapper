@@ -93,35 +93,6 @@ jobs:
           "$GODOT_BIN" --headless --path . --export-release "iOS" "build/ios/Liltkin.ipa"
           find build/ios -maxdepth 3 -type d -name '*.xcodeproj' -o -name '*.plist' | head -40
 
-      - name: Install API key
-        if: env.HAS_KEY == 'true'
-        env:
-          APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
-          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.appstoreconnect/private_keys
-          KEYFILE=~/.appstoreconnect/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8
-          if printf '%s' "$APPSTORE_API_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then
-            printf '%s\n' "$APPSTORE_API_KEY_P8" > "$KEYFILE"
-          else
-            printf '%s' "$APPSTORE_API_KEY_P8" | base64 --decode > "$KEYFILE"
-          fi
-          chmod 600 "$KEYFILE"
-          echo "KEYFILE=$KEYFILE" >> "$GITHUB_ENV"
-
-      - name: Register bundle id if missing
-        if: env.HAS_KEY == 'true'
-        env:
-          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
-          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
-          BUNDLE_NAME: Liltkin
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user pyjwt cryptography
-          export APPSTORE_KEY_PATH="$KEYFILE"
-          python3 tools/asc_ensure_bundle_id.py
-
       - name: Patch Info.plist
         run: |
           set -euo pipefail
@@ -159,6 +130,36 @@ jobs:
           test ${PIPESTATUS[0]} -eq 0
           find "$RUNNER_TEMP/Liltkin.xcarchive" -maxdepth 3 | head -30
           /usr/libexec/PlistBuddy -c Print "$RUNNER_TEMP/Liltkin.xcarchive/Info.plist"
+
+      - name: Install API key
+        if: env.HAS_KEY == 'true'
+        env:
+          APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEYFILE=~/.appstoreconnect/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8
+          if printf '%s' "$APPSTORE_API_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then
+            printf '%s\n' "$APPSTORE_API_KEY_P8" > "$KEYFILE"
+          else
+            printf '%s' "$APPSTORE_API_KEY_P8" | base64 --decode > "$KEYFILE"
+          fi
+          chmod 600 "$KEYFILE"
+          echo "KEYFILE=$KEYFILE" >> "$GITHUB_ENV"
+
+      - name: Register bundle id if missing
+        if: env.HAS_KEY == 'true'
+        env:
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          BUNDLE_NAME: Liltkin
+        run: |
+          set -euo pipefail
+          # macos-15 Python is externally managed (PEP 668).
+          python3 -m pip install --user --break-system-packages pyjwt cryptography
+          export APPSTORE_KEY_PATH="$KEYFILE"
+          python3 tools/asc_ensure_bundle_id.py
 
       - name: Export with App Store distribution signing and upload to TestFlight
         if: env.HAS_KEY == 'true'

@@ -98,22 +98,35 @@ IOS_SIZES = [
 ANDROID_SIZES = [48, 72, 96, 144, 192, 512]
 
 
+def save_png(im, path, opaque=False):
+    # App Store icons are rejected when the PNG still has an alpha channel,
+    # even if every pixel is fully opaque.
+    if opaque:
+        flat = Image.new("RGB", im.size, (255, 248, 214))
+        if im.mode == "RGBA":
+            flat.paste(im, mask=im.getchannel("A"))
+        else:
+            flat.paste(im)
+        flat.save(path, "PNG")
+        return
+    im.save(path, "PNG")
+
+
 def main():
     ios = os.path.join(ROOT, "ios")
     android = os.path.join(ROOT, "android")
     os.makedirs(ios, exist_ok=True)
     os.makedirs(android, exist_ok=True)
-    master = render(1024, "full")
-    master.save(os.path.join(ROOT, "icon.png"))
+    save_png(render(1024, "full"), os.path.join(ROOT, "icon.png"), opaque=True)
     for size in IOS_SIZES:
-        render(size, "full").save(os.path.join(ios, f"icon_{size}.png"))
-        render(size, "mono").save(os.path.join(ios, f"icon_{size}_tinted.png"))
+        save_png(render(size, "full"), os.path.join(ios, f"icon_{size}.png"), opaque=True)
+        save_png(render(size, "mono"), os.path.join(ios, f"icon_{size}_tinted.png"))
     for size in ANDROID_SIZES:
-        render(size, "full").save(os.path.join(android, f"icon_{size}.png"))
-    render(432, "fg").save(os.path.join(android, "adaptive_foreground_432.png"))
-    render(432, "bg").save(os.path.join(android, "adaptive_background_432.png"))
-    render(432, "mono").save(os.path.join(android, "adaptive_monochrome_432.png"))
-    render(192, "full").save(os.path.join(android, "icon_192.png"))
+        save_png(render(size, "full"), os.path.join(android, f"icon_{size}.png"), opaque=True)
+    save_png(render(432, "fg"), os.path.join(android, "adaptive_foreground_432.png"))
+    save_png(render(432, "bg"), os.path.join(android, "adaptive_background_432.png"), opaque=True)
+    save_png(render(432, "mono"), os.path.join(android, "adaptive_monochrome_432.png"))
+    save_png(render(192, "full"), os.path.join(android, "icon_192.png"), opaque=True)
     print("wrote icons under", ROOT)
 
 
